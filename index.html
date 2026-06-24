@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pomodoro</title>
+<style>
+  :root{
+    --bg:#08080a;
+    --panel:#141417;
+    --panel-2:#1c1c22;
+    --line:#2a2a33;
+    --text:#f5f5f7;
+    --muted:#8a8a95;
+    --accent:#ff2d3a;          /* vermelho da fase corrente (alterado via JS) */
+    --glow:rgba(255,45,58,.55);
+    --bic:#00d35a;             /* verde BIC dos indicadores */
+    --bic-glow:rgba(0,211,90,.45);
+    --font-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono","Roboto Mono",Menlo,Consolas,monospace;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+
+  body{
+    font-family:var(--font-ui);
+    color:var(--text);
+    min-height:100vh;
+    background:
+      radial-gradient(120% 90% at 50% 0%, rgba(255,45,58,.10), transparent 55%),
+      radial-gradient(120% 120% at 50% 40%, #16161b 0%, #050506 70%);
+    display:flex;
+    justify-content:center;
+    align-items:flex-start;
+    padding:32px 16px 64px;
+  }
+
+  .app{width:100%;max-width:540px}
+
+  /* ---------- topo ---------- */
+  .top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    margin-bottom:18px;
+  }
+  .brand{display:flex;align-items:baseline;gap:10px}
+  .brand h1{
+    font-size:24px;font-weight:800;letter-spacing:-.5px;
+  }
+  .brand .dot{
+    width:9px;height:9px;border-radius:50%;
+    background:var(--accent);box-shadow:0 0 12px var(--glow);
+    transition:background .4s ease, box-shadow .4s ease;
+  }
+  .now{
+    text-align:right;line-height:1.2;
+  }
+  .now .lbl{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .now .clock{font-family:var(--font-mono);font-size:18px;font-variant-numeric:tabular-nums}
+
+  /* ---------- cartão do timer ---------- */
+  .card{
+    background:linear-gradient(180deg,var(--panel),#0f0f12);
+    border:1px solid var(--line);
+    border-radius:24px;
+    padding:28px 24px 30px;
+    box-shadow:0 24px 60px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.03);
+  }
+
+  .phase{
+    display:flex;justify-content:center;align-items:center;gap:12px;
+    margin-bottom:4px;
+  }
+  .badge{
+    font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--accent);
+    border:1px solid var(--accent);
+    padding:6px 14px;border-radius:999px;
+    background:color-mix(in srgb, var(--accent) 12%, transparent);
+    transition:color .4s, border-color .4s, background .4s;
+  }
+
+  /* ---------- relógio analógico ---------- */
+  .dial-wrap{position:relative;display:flex;justify-content:center;margin:18px 0 6px}
+  .dial-glow{
+    position:absolute;inset:0;margin:auto;
+    width:240px;height:240px;border-radius:50%;
+    background:radial-gradient(circle, var(--glow), transparent 62%);
+    filter:blur(14px);opacity:.6;
+    transition:background .4s ease;
+    pointer-events:none;
+  }
+  svg.dial{width:100%;max-width:300px;height:auto;display:block;position:relative}
+  .track{fill:none;stroke:#222229;stroke-width:14}
+  .arc{
+    fill:none;stroke:var(--accent);stroke-width:14;stroke-linecap:round;
+    filter:drop-shadow(0 0 6px var(--glow));
+    transition:stroke .4s ease;
+  }
+  .tick{stroke:#3a3a44}
+  .tick.major{stroke:#5a5a66}
+  .hand{stroke:var(--accent);stroke-width:4;stroke-linecap:round;transition:stroke .4s ease}
+  .hub{fill:var(--accent);transition:fill .4s ease}
+  .hub-ring{fill:#0f0f12;stroke:var(--accent);stroke-width:2;transition:stroke .4s ease}
+
+  /* ---------- leitura digital ---------- */
+  .digital{
+    text-align:center;
+    font-family:var(--font-mono);
+    font-size:clamp(52px,16vw,76px);
+    font-weight:700;
+    letter-spacing:.04em;
+    font-variant-numeric:tabular-nums;
+    color:var(--accent);
+    text-shadow:0 0 18px var(--glow);
+    margin:6px 0 2px;
+    transition:color .4s ease, text-shadow .4s ease;
+  }
+  .digital .unit{font-size:.28em;color:var(--muted);text-shadow:none;letter-spacing:.2em;display:block;margin-top:-6px}
+
+  /* ---------- indicador: término previsto ---------- */
+  .forecast{
+    display:flex;justify-content:center;align-items:baseline;gap:10px;
+    margin-top:10px;
+  }
+  .forecast .f-lbl{
+    font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+  }
+  .forecast .f-time{
+    font-family:var(--font-mono);font-size:18px;font-weight:700;
+    color:var(--text);font-variant-numeric:tabular-nums;
+  }
+
+  /* ---------- dots do ciclo ---------- */
+  .cycle{display:flex;justify-content:center;align-items:center;gap:14px;margin:14px 0 4px}
+  .cycle .pip{
+    width:11px;height:11px;border-radius:50%;
+    border:2px solid #44444f;background:transparent;
+    transition:all .3s ease;
+  }
+  .cycle .pip.done{background:var(--accent);border-color:var(--accent);box-shadow:0 0 10px var(--glow)}
+  .cycle .pip.active{border-color:var(--accent);animation:pulse 1.4s ease-in-out infinite}
+  .cycle .cap{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-left:6px}
+
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 var(--glow)}50%{box-shadow:0 0 0 5px transparent}}
+
+  /* ---------- controles ---------- */
+  .controls{display:flex;gap:10px;margin-top:22px}
+  button{
+    font-family:var(--font-ui);
+    font-size:15px;font-weight:700;
+    cursor:pointer;border:none;border-radius:14px;
+    padding:15px 0;flex:1;
+    transition:transform .08s ease, background .2s, box-shadow .25s, color .2s;
+  }
+  button:active{transform:translateY(1px)}
+  button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+  .btn-primary{
+    background:var(--accent);color:#0a0a0a;
+    box-shadow:0 8px 24px var(--glow);
+    flex:1.6;
+  }
+  .btn-primary.idle{animation:breathe 2.4s ease-in-out infinite}
+  @keyframes breathe{0%,100%{box-shadow:0 8px 24px var(--glow)}50%{box-shadow:0 8px 34px var(--glow), 0 0 0 4px color-mix(in srgb,var(--accent) 25%,transparent)}}
+
+  .btn-ghost{
+    background:var(--panel-2);color:var(--text);
+    border:1px solid var(--line);
+  }
+  .btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+
+  /* ---------- tabela ---------- */
+  .log{margin-top:30px}
+  .log-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .log-head h2{font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .clear{
+    background:none;border:none;padding:0;flex:0;
+    color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;
+    text-decoration:underline;text-underline-offset:3px;
+    width:auto;
+  }
+  .clear:hover{color:var(--accent)}
+  .clear:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+  .table-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:16px}
+  table{width:100%;border-collapse:collapse;font-size:14px;min-width:430px}
+  thead th{
+    text-align:left;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);font-weight:700;
+    padding:13px 16px;background:#0e0e11;border-bottom:1px solid var(--line);
+  }
+  tbody td{padding:13px 16px;border-bottom:1px solid #202028;font-variant-numeric:tabular-nums}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr.pomo td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+  tbody tr.pausa td:first-child{box-shadow:inset 3px 0 0 #5a5a66}
+  .tipo{font-weight:700}
+  .qtde{font-family:var(--font-mono);font-weight:700;color:var(--accent)}
+  tr.pausa .qtde{color:var(--text)}
+  .empty td{color:var(--muted);text-align:center;padding:26px 16px;font-style:italic}
+
+  /* ---------- dashboard (indicadores verde BIC) ---------- */
+  .dashboard{display:flex;flex-direction:column;gap:14px;margin-top:18px}
+  .metric{
+    background:linear-gradient(180deg,var(--panel),#0f0f12);
+    border:1px solid var(--line);
+    border-left:3px solid var(--bic);
+    border-radius:16px;
+    padding:18px 18px 16px;
+    display:flex;flex-direction:column;gap:5px;
+  }
+  .metric .m-lbl{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .metric .m-val{
+    font-family:var(--font-mono);font-size:30px;font-weight:700;line-height:1.05;
+    color:var(--bic);font-variant-numeric:tabular-nums;
+    text-shadow:0 0 16px var(--bic-glow);
+  }
+  .metric .m-sub{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+
+  /* tela larga: tabela e dashboard lado a lado (cartão do timer permanece igual) */
+  @media (min-width:760px){
+    .app{max-width:900px}
+    .top,.card{max-width:540px;margin-left:auto;margin-right:auto}
+    .log{max-width:900px;margin-left:auto;margin-right:auto}
+    .log-grid{display:flex;gap:18px;align-items:flex-start}
+    .log-grid .table-scroll{flex:1 1 auto;min-width:0}
+    .dashboard{flex:0 0 250px;margin-top:0}
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{animation:none !important;transition:none !important}
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <div class="top">
+      <div class="brand">
+        <span class="dot" id="brandDot"></span>
+        <h1>Pomodoro</h1>
+      </div>
+      <div class="now">
+        <div class="lbl">Hora atual</div>
+        <div class="clock" id="nowClock">--:--:--</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="phase">
+        <span class="badge" id="phaseBadge">Pomodoro</span>
+      </div>
+
+      <div class="dial-wrap">
+        <div class="dial-glow"></div>
+        <svg class="dial" viewBox="0 0 300 300" role="img" aria-label="Relógio analógico de contagem regressiva">
+          <g id="ticks"></g>
+          <circle class="track" cx="150" cy="150" r="120"></circle>
+          <path class="arc" id="arc" d=""></path>
+          <line class="hand" id="hand" x1="150" y1="150" x2="150" y2="42"></line>
+          <circle class="hub-ring" cx="150" cy="150" r="9"></circle>
+          <circle class="hub" cx="150" cy="150" r="4"></circle>
+        </svg>
+      </div>
+
+      <div class="digital" id="digital" aria-live="polite">25:00<span class="unit">min : seg</span></div>
+
+      <div class="forecast">
+        <span class="f-lbl">Término previsto</span>
+        <span class="f-time" id="forecast">--:--:--</span>
+      </div>
+
+      <div class="cycle">
+        <span class="pip" data-i="0"></span>
+        <span class="pip" data-i="1"></span>
+        <span class="pip" data-i="2"></span>
+        <span class="pip" data-i="3"></span>
+        <span class="cap">pomodoros no ciclo</span>
+      </div>
+
+      <div class="controls">
+        <button class="btn-primary idle" id="startBtn">Iniciar</button>
+        <button class="btn-ghost" id="resetBtn">Reiniciar</button>
+        <button class="btn-ghost" id="skipBtn">Avançar</button>
+      </div>
+    </div>
+
+    <div class="log">
+      <div class="log-head">
+        <h2>Registro do dia</h2>
+        <button class="clear" id="clearBtn">Limpar registros</button>
+      </div>
+      <div class="log-grid">
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Tipo</th><th>Início</th><th>Final</th><th>Tempo total</th><th>Qtde</th>
+              </tr>
+            </thead>
+            <tbody id="logBody"></tbody>
+          </table>
+        </div>
+
+        <aside class="dashboard">
+          <div class="metric">
+            <span class="m-lbl">Total trabalhado</span>
+            <span class="m-val" id="totalWork">00:00:00</span>
+            <span class="m-sub">horas</span>
+          </div>
+          <div class="metric">
+            <span class="m-lbl">Total em pausa</span>
+            <span class="m-val" id="totalPause">00:00:00</span>
+            <span class="m-sub">horas</span>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ===================== Configuração das fases ===================== */
+  const PHASES = {
+    pomodoro: { tipo:"Pomodoro",     label:"Pomodoro",     minutes:25, accent:"#ff2d3a", glow:"rgba(255,45,58,.55)" },
+    curta:    { tipo:"Pausa",        label:"Pausa Curta",  minutes:5,  accent:"#e23b48", glow:"rgba(226,59,72,.50)" },
+    longa:    { tipo:"Pausa",        label:"Pausa Longa",  minutes:15, accent:"#a30f1c", glow:"rgba(214,40,55,.50)" }
+  };
+
+  /* ===================== Estado ===================== */
+  let phaseKey   = "pomodoro";
+  let cyclePomos = 0;        // pomodoros concluídos no ciclo atual (0..4)
+  let totalMs    = PHASES[phaseKey].minutes * 60000;
+  let remainingMs= totalMs;
+  let running    = false;
+  let endAt      = 0;        // Date.now() + remainingMs, quando rodando
+  let sessionStart = null;   // Date de quando a fase começou de fato
+  let sessionQtde  = null;   // rótulo de Qtde capturado no início
+  let ticker     = null;
+  const logs = [];
+
+  /* ===================== Elementos ===================== */
+  const $ = (id)=>document.getElementById(id);
+  const arcEl   = $("arc");
+  const handEl  = $("hand");
+  const digital = $("digital");
+  const forecastEl = $("forecast");
+  const badge   = $("phaseBadge");
+  const brandDot= $("brandDot");
+  const startBtn= $("startBtn");
+  const logBody = $("logBody");
+  const workEl  = $("totalWork");
+  const pauseEl = $("totalPause");
+  const pips    = Array.from(document.querySelectorAll(".pip"));
+
+  /* ===================== Geometria do relógio ===================== */
+  const CX=150, CY=150, R=120, HAND=104, T_OUT=138;
+
+  function polar(cx,cy,r,deg){           // 0° = topo, sentido horário
+    const t = deg*Math.PI/180;
+    return { x:cx + r*Math.sin(t), y:cy - r*Math.cos(t) };
+  }
+
+  // marcações (60 traços, a cada 5 um traço maior)
+  (function buildTicks(){
+    const g = $("ticks");
+    let svg = "";
+    for(let i=0;i<60;i++){
+      const major = (i%5===0);
+      const inner = major ? 118 : 126;
+      const a = polar(CX,CY,T_OUT,i*6);
+      const b = polar(CX,CY,inner,i*6);
+      svg += `<line class="tick ${major?'major':''}" x1="${a.x.toFixed(2)}" y1="${a.y.toFixed(2)}" x2="${b.x.toFixed(2)}" y2="${b.y.toFixed(2)}"/>`;
+    }
+    g.innerHTML = svg;
+  })();
+
+  function updateDial(fraction){
+    let A = 360*fraction;
+    if (A >= 359.999) A = 359.999;       // evita arco de 360° (não renderiza)
+    if (fraction <= 0){
+      arcEl.setAttribute("d","");
+    } else {
+      const s = polar(CX,CY,R,0);
+      const e = polar(CX,CY,R,A);
+      const large = A>180 ? 1 : 0;
+      arcEl.setAttribute("d", `M ${s.x.toFixed(2)} ${s.y.toFixed(2)} A ${R} ${R} 0 ${large} 1 ${e.x.toFixed(2)} ${e.y.toFixed(2)}`);
+    }
+    const tip = polar(CX,CY,HAND,A);
+    handEl.setAttribute("x2", tip.x.toFixed(2));
+    handEl.setAttribute("y2", tip.y.toFixed(2));
+  }
+
+  /* ===================== Formatação ===================== */
+  const pad = (n)=>String(n).padStart(2,"0");
+  function fmtCountdown(ms){
+    const s = Math.ceil(ms/1000);
+    return pad(Math.floor(s/60)) + ":" + pad(s%60);
+  }
+  function fmtClock(d){
+    return pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds());
+  }
+  function fmtDuration(ms){
+    let s = Math.round(ms/1000);
+    const h = Math.floor(s/3600); s%=3600;
+    const m = Math.floor(s/60), sec = s%60;
+    return (h>0 ? pad(h)+":" : "") + pad(m)+":"+pad(sec);
+  }
+
+  // Término previsto = início + duração da sessão.
+  // Antes de iniciar, mostra a projeção "se começar agora" (atualiza a cada segundo).
+  function updateForecast(){
+    const end = (sessionStart !== null)
+      ? new Date(sessionStart.getTime() + totalMs)   // travado no início real
+      : new Date(Date.now() + remainingMs);          // projeção ao vivo
+    forecastEl.textContent = fmtClock(end);
+  }
+
+  // soma de durações sempre em HH:MM:SS (horas)
+  function fmtHMS(ms){
+    let s = Math.round(ms/1000);
+    const h = Math.floor(s/3600); s%=3600;
+    const m = Math.floor(s/60), sec = s%60;
+    return pad(h)+":"+pad(m)+":"+pad(sec);
+  }
+
+  /* ===================== Qtde (regra do protocolo) ===================== */
+  function qtdeLabel(){
+    if (phaseKey==="pomodoro") return (cyclePomos+1)+"/4";
+    if (phaseKey==="curta")    return cyclePomos+"/4";
+    return "1/1";              // pausa longa
+  }
+
+  /* ===================== Tema (cores da fase) ===================== */
+  function applyTheme(){
+    const p = PHASES[phaseKey];
+    document.documentElement.style.setProperty("--accent", p.accent);
+    document.documentElement.style.setProperty("--glow", p.glow);
+  }
+
+  /* ===================== Render ===================== */
+  function render(){
+    const fraction = totalMs>0 ? Math.max(0,Math.min(1, remainingMs/totalMs)) : 0;
+    updateDial(fraction);
+    digital.innerHTML = fmtCountdown(remainingMs) + '<span class="unit">min : seg</span>';
+    badge.textContent = PHASES[phaseKey].label;
+    updateForecast();
+    renderPips();
+  }
+
+  function renderPips(){
+    pips.forEach((pip,i)=>{
+      pip.classList.remove("done","active");
+      if (i < cyclePomos) pip.classList.add("done");
+      else if (i === cyclePomos && phaseKey==="pomodoro") pip.classList.add("active");
+    });
+  }
+
+  function updateStartBtn(){
+    startBtn.textContent = running ? "Pausar" : "Iniciar";
+    startBtn.classList.toggle("idle", !running);
+  }
+
+  /* ===================== Som de finalização (Web Audio) ===================== */
+  let audioCtx = null;
+  function ensureAudio(){
+    if (!audioCtx){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+  }
+  function arpeggio(start){
+    const notes = [880, 1108.73, 1318.51]; // A5 - C#6 - E6
+    notes.forEach((f,i)=>{
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = "sine"; o.frequency.value = f;
+      const t = start + i*0.12;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.28, t+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t+0.85);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(t); o.stop(t+0.9);
+    });
+  }
+  function playChime(){
+    ensureAudio();
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    arpeggio(now);          // toca uma vez
+    arpeggio(now + 0.6);    // repete (efeito de aviso)
+  }
+
+  /* ===================== Motor do timer ===================== */
+  function start(){
+    ensureAudio();
+    if (running) return;
+    if (sessionStart === null){          // primeira partida desta fase
+      sessionStart = new Date();
+      sessionQtde  = qtdeLabel();
+    }
+    running = true;
+    endAt = Date.now() + remainingMs;
+    ticker = setInterval(tick, 250);
+    updateStartBtn();
+    render();
+  }
+
+  function pause(){
+    if (!running) return;
+    remainingMs = Math.max(0, endAt - Date.now());
+    running = false;
+    clearInterval(ticker);
+    updateStartBtn();
+    render();
+  }
+
+  function toggle(){ running ? pause() : start(); }
+
+  function tick(){
+    remainingMs = endAt - Date.now();
+    if (remainingMs <= 0){
+      remainingMs = 0;
+      render();
+      complete();
+      return;
+    }
+    render();
+  }
+
+  function complete(){
+    clearInterval(ticker);
+    running = false;
+    logSession(new Date());   // conclusão natural
+    playChime();
+    advance();
+  }
+
+  function logSession(finalDate){
+    if (sessionStart === null) return;
+    logs.push({
+      tipo:  PHASES[phaseKey].tipo,
+      isPomo: phaseKey === "pomodoro",
+      inicio: fmtClock(sessionStart),
+      final:  fmtClock(finalDate),
+      total:  fmtDuration(finalDate - sessionStart),
+      durMs:  finalDate - sessionStart,
+      qtde:   sessionQtde
+    });
+    renderTable();
+    renderDashboard();
+  }
+
+  // Decide e carrega a próxima fase (atualiza contador de ciclo)
+  function advance(){
+    if (phaseKey === "pomodoro"){
+      cyclePomos++;
+      loadPhase(cyclePomos >= 4 ? "longa" : "curta");
+    } else {
+      if (phaseKey === "longa") cyclePomos = 0;   // novo ciclo
+      loadPhase("pomodoro");
+    }
+  }
+
+  function loadPhase(key){
+    phaseKey = key;
+    totalMs = PHASES[key].minutes * 60000;
+    remainingMs = totalMs;
+    running = false;
+    endAt = 0;
+    sessionStart = null;
+    sessionQtde = null;
+    applyTheme();
+    render();
+    updateStartBtn();
+  }
+
+  function resetPhase(){
+    clearInterval(ticker);
+    running = false;
+    remainingMs = totalMs;
+    endAt = 0;
+    sessionStart = null;
+    sessionQtde = null;
+    render();
+    updateStartBtn();
+  }
+
+  function skip(){
+    if (running){
+      remainingMs = Math.max(0, endAt - Date.now());
+      clearInterval(ticker);
+      running = false;
+    }
+    if (sessionStart !== null) logSession(new Date()); // registra bloco já iniciado
+    advance();
+  }
+
+  /* ===================== Tabela ===================== */
+  function renderTable(){
+    if (logs.length === 0){
+      logBody.innerHTML = '<tr class="empty"><td colspan="5">Nenhum registro ainda. Inicie um Pomodoro para começar o dia.</td></tr>';
+      return;
+    }
+    logBody.innerHTML = logs.map(r=>`
+      <tr class="${r.isPomo?'pomo':'pausa'}">
+        <td class="tipo">${r.tipo}</td>
+        <td>${r.inicio}</td>
+        <td>${r.final}</td>
+        <td>${r.total}</td>
+        <td class="qtde">${r.qtde}</td>
+      </tr>`).join("");
+  }
+
+  /* ===================== Dashboard (totais) ===================== */
+  function renderDashboard(){
+    let work = 0, pause = 0;
+    for (const r of logs){
+      if (r.isPomo) work += r.durMs; else pause += r.durMs;
+    }
+    workEl.textContent  = fmtHMS(work);
+    pauseEl.textContent = fmtHMS(pause);
+  }
+
+  function clearLogs(){
+    logs.length = 0;
+    renderTable();
+    renderDashboard();
+  }
+
+  /* ===================== Relógio de parede ===================== */
+  function tickClock(){
+    $("nowClock").textContent = fmtClock(new Date());
+    if (!running) updateForecast();   // projeção "se iniciar agora" enquanto parado
+  }
+
+  /* ===================== Ligações ===================== */
+  startBtn.addEventListener("click", toggle);
+  $("resetBtn").addEventListener("click", resetPhase);
+  $("skipBtn").addEventListener("click", skip);
+  $("clearBtn").addEventListener("click", clearLogs);
+
+  // atalho: barra de espaço inicia/pausa
+  document.addEventListener("keydown",(e)=>{
+    if (e.code === "Space" && e.target.tagName !== "BUTTON"){
+      e.preventDefault(); toggle();
+    }
+  });
+
+  /* ===================== Início ===================== */
+  applyTheme();
+  render();
+  renderTable();
+  renderDashboard();
+  updateStartBtn();
+  tickClock();
+  setInterval(tickClock, 1000);
+})();
+</script>
+</body>
+</html>
