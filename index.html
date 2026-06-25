@@ -218,6 +218,26 @@
   }
   .metric .m-sub{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 
+  /* bloco Turno de trabalho */
+  .metric.shift{gap:10px}
+  .shift-row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .shift-row label{font-size:12px;color:var(--muted);font-weight:600}
+  .shift-row input[type="time"]{
+    color-scheme:dark;
+    font-family:var(--font-mono);font-size:15px;font-weight:700;
+    color:var(--text);background:#0e0e11;
+    border:1px solid var(--line);border-radius:8px;
+    padding:6px 8px;
+  }
+  .shift-row input[type="time"]:focus{outline:none;border-color:var(--accent)}
+  .shift-total{border-top:1px solid var(--line);padding-top:10px;margin-top:2px}
+  .shift-total label{color:var(--text);font-weight:700}
+  .m-val-sm{
+    font-family:var(--font-mono);font-size:20px;font-weight:700;
+    color:var(--bic);font-variant-numeric:tabular-nums;
+    text-shadow:0 0 12px var(--bic-glow);
+  }
+
   /* tela larga: tabela e dashboard lado a lado (cartão do timer permanece igual) */
   @media (min-width:760px){
     .app{max-width:900px}
@@ -313,6 +333,22 @@
             <span class="m-val" id="totalPause">00:00:00</span>
             <span class="m-sub">horas</span>
           </div>
+
+          <div class="metric shift">
+            <span class="m-lbl">Turno de trabalho</span>
+            <div class="shift-row">
+              <label for="shiftStart">Início</label>
+              <input type="time" id="shiftStart">
+            </div>
+            <div class="shift-row">
+              <label for="shiftEnd">Final</label>
+              <input type="time" id="shiftEnd" value="16:00">
+            </div>
+            <div class="shift-row shift-total">
+              <label>Total do turno</label>
+              <span class="m-val-sm" id="shiftTotal">--:--</span>
+            </div>
+          </div>
         </aside>
       </div>
     </div>
@@ -339,6 +375,7 @@
   let sessionStart = null;   // Date de quando a fase começou de fato
   let sessionQtde  = null;   // rótulo de Qtde capturado no início
   let ticker     = null;
+  let shiftStartCaptured = false;   // início do turno já capturado no 1º Pomodoro
   const logs = [];
 
   /* ===================== Elementos ===================== */
@@ -353,6 +390,9 @@
   const logBody = $("logBody");
   const workEl  = $("totalWork");
   const pauseEl = $("totalPause");
+  const shiftStartInput = $("shiftStart");
+  const shiftEndInput   = $("shiftEnd");
+  const shiftTotalEl    = $("shiftTotal");
   const pips    = Array.from(document.querySelectorAll(".pip"));
 
   /* ===================== Geometria do relógio ===================== */
@@ -498,6 +538,12 @@
   function start(){
     ensureAudio();
     if (running) return;
+    // início do turno: capturado no 1º Pomodoro, editável depois
+    if (!shiftStartCaptured && phaseKey === "pomodoro"){
+      if (!shiftStartInput.value) shiftStartInput.value = nowHHMM();
+      shiftStartCaptured = true;
+      recomputeShift();
+    }
     if (sessionStart === null){          // primeira partida desta fase
       sessionStart = new Date();
       sessionQtde  = qtdeLabel();
@@ -625,6 +671,22 @@
     pauseEl.textContent = fmtHMS(pause);
   }
 
+  /* ===================== Turno de trabalho ===================== */
+  function nowHHMM(){
+    const d = new Date();
+    return pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+  // Total do turno = Final - Início (em horas)
+  function recomputeShift(){
+    const s = shiftStartInput.value, e = shiftEndInput.value;
+    if (!s || !e){ shiftTotalEl.textContent = "--:--"; return; }
+    const [sh,sm] = s.split(":").map(Number);
+    const [eh,em] = e.split(":").map(Number);
+    let diff = (eh*60+em) - (sh*60+sm);
+    if (diff < 0) diff = 0;
+    shiftTotalEl.textContent = pad(Math.floor(diff/60)) + ":" + pad(diff%60);
+  }
+
   function clearLogs(){
     logs.length = 0;
     renderTable();
@@ -642,6 +704,8 @@
   $("resetBtn").addEventListener("click", resetPhase);
   $("skipBtn").addEventListener("click", skip);
   $("clearBtn").addEventListener("click", clearLogs);
+  shiftStartInput.addEventListener("input", recomputeShift);
+  shiftEndInput.addEventListener("input", recomputeShift);
 
   // atalho: barra de espaço inicia/pausa
   document.addEventListener("keydown",(e)=>{
@@ -655,6 +719,7 @@
   render();
   renderTable();
   renderDashboard();
+  recomputeShift();
   updateStartBtn();
   tickClock();
   setInterval(tickClock, 1000);
